@@ -23,3 +23,10 @@ yarn-error.log*
 # Env
 .env
 .env.local
+
+# Secrets / credentials
+service-account.json
+*.json.enc
+
+#others
+.travis.yml

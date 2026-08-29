@@ -1,0 +1,60 @@
+name: Deploy MultiK8s
+
+# Travis: deploy.on.branch = main  ->  run the whole thing on every push to main
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    # docker, gcloud and kubectl are pre-installed on this runner, so Travis's
+    # "curl https://sdk.cloud.google.com | bash" + "source path.bash.inc" aren't needed
+    runs-on: ubuntu-latest
+
+    env:
+      SHA: ${{ github.sha }}                # Travis: SHA=$(git rev-parse HEAD)
+      CLOUDSDK_CORE_DISABLE_PROMPTS: "1"    # Travis: CLOUDSDK_CORE_DISABLE_PROMPTS=1
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Travis before_install: openssl ... -in service-account.json.enc ... -d
+      - name: Recreate service-account.json from secret
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+        run: echo "$GCP_SA_KEY" | base64 --decode > service-account.json
+
+      # Travis before_install: gcloud auth + project + region
+      - name: Authenticate to Google Cloud
+        run: |
+          gcloud auth activate-service-account --key-file service-account.json
+          gcloud config set project multi-k8s-507009
+          gcloud config set compute/region us-central1
+
+      # Replaces Travis "gcloud components update kubectl" — modern GKE needs this plugin
+      - name: Install the GKE auth plugin
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y google-cloud-cli-gke-gcloud-auth-plugin
+
+      # Travis before_install: gcloud container clusters get-credentials multi-k8s
+      - name: Connect kubectl to the cluster
+        run: gcloud container clusters get-credentials multi-k8s --region us-central1
+
+      # Travis before_install: docker login
+      - name: Log in to Docker Hub
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+      # Travis before_install: build the test image
+      - name: Build the test image
+        run: docker build -t chakri1408/react-test -f ./client/Dockerfile.dev ./client
+
+      # Travis script: run the tests
+      - name: Run tests
+        run: docker run -e CI=true chakri1408/react-test npm test
+
+      # Travis deploy: bash ./deploy.sh  (build+push all 3 images, apply k8s, set images)
+      - name: Deploy
+        run: bash ./deploy.sh
