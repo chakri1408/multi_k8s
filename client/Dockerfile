@@ -3,6 +3,8 @@ WORKDIR '/app'
 COPY ./package.json ./
 RUN npm install
 COPY . .
+# react-scripts build otherwise fails on an eslint-plugin-jest version mismatch
+ENV DISABLE_ESLINT_PLUGIN=true
 RUN npm run build
 
 FROM nginx

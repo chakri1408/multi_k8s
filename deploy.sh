@@ -1,3 +1,6 @@
+#!/bin/bash
+set -e   # stop immediately if any build/push/kubectl command fails
+
 docker build -t chakri1408/multi-client:latest -t chakri1408/multi-client:$SHA -f ./client/Dockerfile ./client
 docker build -t chakri1408/multi-server:latest -t chakri1408/multi-server:$SHA -f ./server/Dockerfile ./server
 docker build -t chakri1408/multi-worker:latest -t chakri1408/multi-worker:$SHA -f ./worker/Dockerfile ./worker
