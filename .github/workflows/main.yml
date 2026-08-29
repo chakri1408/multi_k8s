@@ -8,42 +8,37 @@ on:
 
 jobs:
   deploy:
-    # docker, gcloud and kubectl are pre-installed on this runner, so Travis's
-    # "curl https://sdk.cloud.google.com | bash" + "source path.bash.inc" aren't needed
     runs-on: ubuntu-latest
 
     env:
-      SHA: ${{ github.sha }}                # Travis: SHA=$(git rev-parse HEAD)
-      CLOUDSDK_CORE_DISABLE_PROMPTS: "1"    # Travis: CLOUDSDK_CORE_DISABLE_PROMPTS=1
+      SHA: ${{ github.sha }}   # Travis: SHA=$(git rev-parse HEAD)
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Travis before_install: openssl ... -in service-account.json.enc ... -d
-      - name: Recreate service-account.json from secret
-        env:
-          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
-        run: echo "$GCP_SA_KEY" | base64 --decode > service-account.json
-
-      # Travis before_install: gcloud auth + project + region
+      # Travis: gcloud auth activate-service-account --key-file service-account.json
+      # This official action reads the base64 GCP_SA_KEY secret directly (no file needed).
       - name: Authenticate to Google Cloud
-        run: |
-          gcloud auth activate-service-account --key-file service-account.json
-          gcloud config set project multi-k8s-507009
-          gcloud config set compute/region us-central1
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      # Replaces Travis "gcloud components update kubectl" — modern GKE needs this plugin
-      - name: Install the GKE auth plugin
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y google-cloud-cli-gke-gcloud-auth-plugin
+      # Travis: curl sdk.cloud.google.com | bash  +  gcloud config set project
+      - name: Set up the gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: multi-k8s-507009
 
-      # Travis before_install: gcloud container clusters get-credentials multi-k8s
-      - name: Connect kubectl to the cluster
-        run: gcloud container clusters get-credentials multi-k8s --region us-central1
+      # Travis: gcloud container clusters get-credentials multi-k8s
+      # This action also installs gke-gcloud-auth-plugin, which apt could not find.
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: multi-k8s
+          location: us-central1
 
-      # Travis before_install: docker login
+      # Travis: echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
       - name: Log in to Docker Hub
         run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
